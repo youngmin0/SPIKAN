@@ -90,7 +90,7 @@ def setup_eval_function(model, equation):
     elif dim == '3d':
         if model == 'pinn' and equation == 'navier_stokes3d':
             fn = _eval3d_ns_pinn
-        elif model == 'spinn' and equation == 'navier_stokes3d':
+        elif model in ['spinn', 'spikan'] and equation == 'navier_stokes3d':
             fn = _eval3d_ns_spinn
         else:
             fn = _eval3d
