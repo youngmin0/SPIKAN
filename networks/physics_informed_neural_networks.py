@@ -288,14 +288,24 @@ class LinenKANLayer(nn.Module):
 
     def b_spline_basis(self, x):
         # x: (batch, in_features)
+        x = nn.sigmoid(x) 
         x = x[..., None] # (batch, in_features, 1)
+        
+        epsilon = 1e-6
         
         bases = (x >= self.knots[..., :-1]) & (x < self.knots[..., 1:])
         for k in range(1, self.spline_order + 1):
-            term1 = (x - self.knots[..., :-(k + 1)]) / (self.knots[..., k:-1] - self.knots[..., :-(k + 1)]) * bases[..., :-1]
-            term2 = (self.knots[..., k + 1:] - x) / (self.knots[..., k + 1:] - self.knots[..., 1:-k]) * bases[..., 1:]
+            term1_num = (x - self.knots[..., :-(k + 1)]) * bases[..., :-1]
+            term1_den = self.knots[..., k:-1] - self.knots[..., :-(k + 1)]
+            
+            term2_num = (self.knots[..., k + 1:] - x) * bases[..., 1:]
+            term2_den = self.knots[..., k + 1:] - self.knots[..., 1:-k]
+            
+            term1 = term1_num / (term1_den + epsilon)
+            term2 = term2_num / (term2_den + epsilon)
+            
             bases = term1 + term2
-        return bases # (batch, in_features, grid_size + spline_order)
+        return bases
 
     def __call__(self, x):
         # x: (batch, in_features)
@@ -348,4 +358,4 @@ class SPIKAN3d(nn.Module):
             xy.append(jnp.einsum('fx, fy->fxy', outputs[0][self.r * i:self.r * (i + 1)], outputs[1][self.r * i:self.r * (i + 1)]))
             pred.append(jnp.einsum('fxy, fz->xyz', xy[i], outputs[2][self.r * i:self.r * (i + 1)]))
 
-        return pred if len(pred) > 1 else pred[0]
+        return pred if self.out_dim > 1 else pred[0]
