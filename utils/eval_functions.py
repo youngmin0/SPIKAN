@@ -11,6 +11,19 @@ def relative_l2(u, u_gt):
 def mse(u, u_gt):
     return jnp.mean((u-u_gt)**2)
 
+@partial(jax.jit, static_argnums=(0,))
+def _eval2d(apply_fn, params, *test_data):
+    x, y, u_gt = test_data
+    return relative_l2(apply_fn(params, x, y), u_gt)
+
+@partial(jax.jit, static_argnums=(0,))
+def _eval2d_mask(apply_fn, mask, params, *test_data):
+    x, y, u_gt = test_data
+    nx, ny = u_gt.shape
+    pred = apply_fn(params, x, y).reshape(nx, ny)
+    pred = pred * mask
+    return relative_l2(pred, u_gt.reshape(nx, ny))
+
 
 @partial(jax.jit, static_argnums=(0,))
 def _eval3d(apply_fn, params, *test_data):
