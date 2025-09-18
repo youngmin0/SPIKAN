@@ -557,7 +557,7 @@ def generate_train_data(args, key, result_dir=None):
             )
         else:
             raise NotImplementedError
-    elif args.model == 'spinn':
+    elif args.model in ['spinn', 'spikan']:
         if eqn == 'diffusion3d':
             data = _spinn_train_generator_diffusion3d(
                 args.nc, key

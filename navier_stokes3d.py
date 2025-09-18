@@ -88,7 +88,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type=str, default='./data/navier_stokes', help='a directory to reference solution')
 
     # model and equation
-    parser.add_argument('--model', type=str, default='spinn', choices=['spinn', 'pinn'], help='model name (pinn; spinn)')
+    # [수정] 'spikan'을 선택 옵션에 추가
+    parser.add_argument('--model', type=str, default='spinn', choices=['spinn', 'pinn', 'spikan'], help='model name (pinn; spinn; spikan)')
     parser.add_argument('--equation', type=str, default='navier_stokes3d', help='equation to solve')
     
     # input data settings
@@ -105,12 +106,18 @@ if __name__ == '__main__':
     parser.add_argument('--lbda_ic', type=int, default=10000, help='weighting factor for initial condition')
 
     # model settings
-    parser.add_argument('--mlp', type=str, default='modified_mlp', choices=['mlp', 'modified_mlp'], help='type of mlp')
+    parser.add_argument('--mlp', type=str, default='modified_mlp', choices=['mlp', 'modified_mlp'], help='type of mlp for SPINN')
     parser.add_argument('--n_layers', type=int, default=3, help='the number of layer')
     parser.add_argument('--features', type=int, default=128, help='feature size of each layer')
-    parser.add_argument('--r', type=int, default=128, help='rank of the approximated tensor')
+    parser.add_argument('--r', type=int, default=128, help='rank of the approximated tensor for SPINN/SPIKAN')
     parser.add_argument('--out_dim', type=int, default=2, help='size of model output')
     parser.add_argument('--pos_enc', type=int, default=5, help='size of the positional encoding (zero if no encoding)')
+
+    # SPIKAN
+    kan_parser = parser.add_argument_group('KAN settings for SPIKAN model')
+    kan_parser.add_argument('--kan_layer_type', type=str, default='base', help='Type of KAN layer (e.g., base, spline, chebyshev)')
+    kan_parser.add_argument('--kan_k', type=int, default=3, help='Order of B-spline for KAN layer')
+    kan_parser.add_argument('--kan_g', type=int, default=5, help='Number of grid intervals for KAN layer')
 
     # time marching
     parser.add_argument('--marching_steps', type=int, default=10, help='step size for time marching')
@@ -230,4 +237,4 @@ if __name__ == '__main__':
         final_error = sum(error_list)/len(error_list)
         with open(os.path.join(result_dir, '..', 'best_error.csv'), 'a') as f:
             f.write(f'test error for each time window: {error_list}\n')
-            f.write(f'total error: {final_error}\n')
+            f.write(f'total error: {final_error}\n')    

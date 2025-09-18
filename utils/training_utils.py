@@ -25,17 +25,29 @@ def setup_networks(args, key):
             model = PINN4d(feat_sizes)
         else:
             raise NotImplementedError
-    else: # SPINN
+    else:  # SPINN or SPIKAN
         # feature sizes
         feat_sizes = tuple([args.features for _ in range(args.n_layers)])
-        if dim == '2d':
-            model = SPINN2d(feat_sizes, args.r, args.mlp)
-        elif dim == '3d':
-            model = SPINN3d(feat_sizes, args.r, args.out_dim, args.pos_enc, args.mlp)
-        elif dim == '4d':
-            model = SPINN4d(feat_sizes, args.r, args.out_dim, args.mlp)
+        if args.model == 'spinn':
+            if dim == '2d':
+                model = SPINN2d(feat_sizes, args.r, args.mlp)
+            elif dim == '3d':
+                model = SPINN3d(feat_sizes, args.r, args.out_dim, args.pos_enc, args.mlp)
+            elif dim == '4d':
+                model = SPINN4d(feat_sizes, args.r, args.out_dim, args.mlp)
+            else:
+                raise NotImplementedError
+        elif args.model == 'spikan':
+            model = SPIKAN3d(
+                features=feat_sizes,
+                r=args.r,
+                out_dim=args.out_dim,
+                pos_enc=args.pos_enc,
+                kan_k=args.kan_k,  # '--kan_k' 인자가 kan_k에 정확히 전달됨
+                kan_g=args.kan_g   # '--kan_g' 인자가 kan_g에 정확히 전달됨
+            )
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"SPINN/SPIKAN not implemented for {dim}")
     # initialize params
     # dummy inputs must be given
     if dim == '2d':
@@ -79,10 +91,9 @@ def name_model(args):
         f'fs{args.features}',
         f'lr{args.lr}',
         f's{args.seed}',
-        f'r{args.r}'
     ]
-    if args.model != 'spinn':
-        del name[-1]
+    if args.model in ['spinn', 'spikan']:
+        name.append(f'r{args.r}')
     if args.equation != 'navier_stokes3d':
         name.insert(0, f'nc{args.nc}')
     if args.equation == 'navier_stokes3d':
@@ -101,6 +112,12 @@ def name_model(args):
         name.append(f'k{args.k}')
     
     name.append(f'{args.mlp}')
+        
+    if args.model == 'spinn':
+        name.append(f'{args.mlp}')
+    elif args.model == 'spikan':
+        name.append(f'k{args.kan_k}')
+        name.append(f'g{args.kan_g}')
         
     return '_'.join(name)
 
