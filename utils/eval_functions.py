@@ -11,19 +11,6 @@ def relative_l2(u, u_gt):
 def mse(u, u_gt):
     return jnp.mean((u-u_gt)**2)
 
-@partial(jax.jit, static_argnums=(0,))
-def _eval2d(apply_fn, params, *test_data):
-    x, y, u_gt = test_data
-    return relative_l2(apply_fn(params, x, y), u_gt)
-
-@partial(jax.jit, static_argnums=(0,))
-def _eval2d_mask(apply_fn, mask, params, *test_data):
-    x, y, u_gt = test_data
-    nx, ny = u_gt.shape
-    pred = apply_fn(params, x, y).reshape(nx, ny)
-    pred = pred * mask
-    return relative_l2(pred, u_gt.reshape(nx, ny))
-
 
 @partial(jax.jit, static_argnums=(0,))
 def _eval3d(apply_fn, params, *test_data):
@@ -82,12 +69,7 @@ def _evalnd(apply_fn, params, *test_data):
 
 def setup_eval_function(model, equation):
     dim = equation[-2:]
-    if dim == '2d':
-        if equation == 'poisson2d':
-            fn = _eval2d_mask
-        else:
-            fn = _eval2d
-    elif dim == '3d':
+    if dim == '3d':
         if model == 'pinn' and equation == 'navier_stokes3d':
             fn = _eval3d_ns_pinn
         elif model in ['spinn', 'spikan'] and equation == 'navier_stokes3d':

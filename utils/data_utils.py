@@ -4,44 +4,6 @@ import jax
 import jax.numpy as jnp
 
 
-# 3d time-independent helmholtz exact u
-@partial(jax.jit, static_argnums=(0, 1, 2,))
-def helmholtz3d_exact_u(a1, a2, a3, x, y, z):
-    return jnp.sin(a1*jnp.pi*x) * jnp.sin(a2*jnp.pi*y) * jnp.sin(a3*jnp.pi*z)
-
-
-# 3d time-independent helmholtz source term
-@partial(jax.jit, static_argnums=(0, 1, 2,))
-def helmholtz3d_source_term(a1, a2, a3, x, y, z, lda=1.):
-    u_gt = helmholtz3d_exact_u(a1, a2, a3, x, y, z)
-    uxx = -(a1*jnp.pi)**2 * u_gt
-    uyy = -(a2*jnp.pi)**2 * u_gt
-    uzz = -(a3*jnp.pi)**2 * u_gt
-    return uxx + uyy + uzz + lda*u_gt
-
-
-# 2d time-dependent klein-gordon exact u
-def klein_gordon3d_exact_u(t, x, y, k):
-    return (x + y) * jnp.cos(k * t) + (x * y) * jnp.sin(k * t)
-
-
-# 2d time-dependent klein-gordon source term
-def klein_gordon3d_source_term(t, x, y, k):
-    u = klein_gordon3d_exact_u(t, x, y, k)
-    return u**2 - (k**2)*u
-
-
-# 3d time-dependent klein-gordon exact u
-def klein_gordon4d_exact_u(t, x, y, z, k):
-    return (x + y + z) * jnp.cos(k*t) + (x * y * z) * jnp.sin(k*t)
-
-
-# 3d time-dependent klein-gordon source term
-def klein_gordon4d_source_term(t, x, y, z, k):
-    u = klein_gordon4d_exact_u(t, x, y, z, k)
-    return u**2 - (k**2)*u
-
-
 # 3d time-dependent navier-stokes forcing term
 def navier_stokes4d_forcing_term(t, x, y, z, nu):
     # forcing terms in the PDE

@@ -38,14 +38,17 @@ def setup_networks(args, key):
             else:
                 raise NotImplementedError
         elif args.model == 'spikan':
-            model = SPIKAN3d(
-                features=feat_sizes,
-                r=args.r,
-                out_dim=args.out_dim,
-                pos_enc=args.pos_enc,
-                kan_k=args.kan_k,  # '--kan_k' 인자가 kan_k에 정확히 전달됨
-                kan_g=args.kan_g   # '--kan_g' 인자가 kan_g에 정확히 전달됨
-            )
+            if dim == '3d':
+                model = SPIKAN3d(
+                    features=feat_sizes,
+                    r=args.r,
+                    out_dim=args.out_dim,
+                    pos_enc=args.pos_enc,
+                    kan_k=args.kan_k,  # '--kan_k' 인자가 kan_k에 정확히 전달됨
+                    kan_g=args.kan_g   # '--kan_g' 인자가 kan_g에 정확히 전달됨
+                )
+            else:
+                raise NotImplementedError(f"SPIKAN not implemented for {dim}")
         else:
             raise NotImplementedError(f"SPINN/SPIKAN not implemented for {dim}")
     # initialize params
@@ -106,10 +109,6 @@ def name_model(args):
     if args.equation == 'navier_stokes4d':
         name.append(f'lc{args.lbda_c}')
         name.append(f'li{args.lbda_ic}')
-    if args.equation == 'helmholtz3d':
-        name.append(f'a{args.a1}{args.a2}{args.a3}')
-    if args.equation == 'klein_gordon3d':
-        name.append(f'k{args.k}')
     
     name.append(f'{args.mlp}')
         
