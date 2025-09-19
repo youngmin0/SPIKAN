@@ -183,7 +183,6 @@ def _spinn_train_generator_flow_mixing3d(nc, v_max, key):
 
 #======================== Taylor-Couette flow2d ========================#
 #---------------------------------- SPINN, SPIKAN -----------------------------------#
-#---------------------------------- SPINN, SPIKAN -----------------------------------#
 def _train_generator_taylor_couette_2d(args, key):
     R1, R2, Omega1, Omega2 = args.r1, args.r2, args.omega1, args.omega2
     nr_c, ntheta_c, n_b = args.nr_c, args.ntheta_c, args.n_b
@@ -210,6 +209,39 @@ def _train_generator_taylor_couette_2d(args, key):
     u_thetab = jnp.concatenate([u_thetab1, u_thetab2], axis=0)
 
     return rc, thetac, rb, thetab_combined, u_thetab
+
+
+def _train_generator_taylor_couette_2d_cartesian(args, key):
+    R1, R2, Omega1, Omega2 = args.r1, args.r2, args.omega1, args.omega2
+    n_c, n_b = args.n_c, args.n_b 
+    
+    keys = jax.random.split(key, 4)
+
+    # Collocation points
+    radius_c = jnp.sqrt(jax.random.uniform(keys[0], (n_c, 1), minval=R1**2, maxval=R2**2))
+    angle_c = jax.random.uniform(keys[1], (n_c, 1), minval=0., maxval=2.*jnp.pi)
+    xc = radius_c * jnp.cos(angle_c)
+    yc = radius_c * jnp.sin(angle_c)
+
+    # Boundary points
+    angle_b = jax.random.uniform(keys[2], (n_b, 1), minval=0., maxval=2.*jnp.pi)
+    # Inner boundary
+    xb1 = R1 * jnp.cos(angle_b)
+    yb1 = R1 * jnp.sin(angle_b)
+    u_xb1 = -Omega1 * yb1
+    u_yb1 = Omega1 * xb1
+    # Outer boundary
+    xb2 = R2 * jnp.cos(angle_b)
+    yb2 = R2 * jnp.sin(angle_b)
+    u_xb2 = -Omega2 * yb2
+    u_yb2 = Omega2 * xb2
+    
+    xb = jnp.concatenate([xb1, xb2])
+    yb = jnp.concatenate([yb1, yb2])
+    u_xb = jnp.concatenate([u_xb1, u_xb2])
+    u_yb = jnp.concatenate([u_yb1, u_yb2])
+
+    return xc, yc, xb, yb, u_xb, u_yb
 
 
 
@@ -239,6 +271,8 @@ def generate_train_data(args, key, result_dir=None):
             data = _train_generator_taylor_couette_2d(
                 args, key
             )
+        elif args.equation == 'taylor_couette_2d_cartesian':
+            data = _train_generator_taylor_couette_2d_cartesian(args, key)
         else:
             raise NotImplementedError
     else:
@@ -361,6 +395,26 @@ def _test_generator_taylor_couette_2d(args):
     return r_vec, theta_vec, u_theta_gt
 
 
+def _test_generator_taylor_couette_2d_cartesian(args):
+    nr_eval, ntheta_eval = args.nr_eval, args.ntheta_eval
+    
+    r_vec = jnp.linspace(args.r1, args.r2, nr_eval)
+    theta_vec = jnp.linspace(0, 2 * jnp.pi, ntheta_eval)
+    r_grid, theta_grid = jnp.meshgrid(r_vec, theta_vec, indexing='ij')
+    
+    x_grid = r_grid * jnp.cos(theta_grid)
+    y_grid = r_grid * jnp.sin(theta_grid)
+    
+    u_theta_gt = taylor_couette_2d_exact_u(r_grid, args.r1, args.r2, args.omega1, args.omega2)
+    u_x_gt = -u_theta_gt * jnp.sin(theta_grid)
+    u_y_gt = u_theta_gt * jnp.cos(theta_grid)
+    
+    x_vec = jnp.linspace(-args.r2, args.r2, nr_eval).reshape(-1, 1)
+    y_vec = jnp.linspace(-args.r2, args.r2, nr_eval).reshape(-1, 1)
+    
+    return x_vec, y_vec, x_grid, y_grid, u_x_gt, u_y_gt
+
+
 def generate_test_data(args, result_dir):
     eqn = args.equation
     if eqn == 'navier_stokes3d':
@@ -377,6 +431,8 @@ def generate_test_data(args, result_dir):
         )
     elif eqn == 'taylor_couette_2d':
         data = _test_generator_taylor_couette_2d(args)
+    elif args.equation == 'taylor_couette_2d_cartesian':
+        data = _test_generator_taylor_couette_2d_cartesian(args)
     else:
         raise NotImplementedError
     return data

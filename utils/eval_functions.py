@@ -79,11 +79,34 @@ def _evalnd(apply_fn, params, *test_data):
     return relative_l2(apply_fn(params, t, *x_list), u_gt)
 
 
-def setup_eval_function(model, equation):
-    dim = equation[-2:]
+@partial(jax.jit, static_argnums=(0,))
+def _eval2d_cartesian_velocity(apply_fn, params, *test_data, r1, r2):
+    x_vec, y_vec, x_grid, y_grid, u_x_gt, u_y_gt = test_data
+    
+    u_x_pred, u_y_pred = apply_fn(params, x_vec, y_vec)
+    
+    pred_mag = jnp.sqrt(u_x_pred**2 + u_y_pred**2)
+    gt_mag = jnp.sqrt(u_x_gt**2 + u_y_gt**2)
+
+    r_pred = jnp.sqrt(x_grid**2 + y_grid**2)
+    mask = (r_pred >= r1) & (r_pred <= r2)
+    
+    return relative_l2(pred_mag * mask, gt_mag * mask)
+
+
+def setup_eval_function(model, equation, args = None):
+    if 'taylor_couette_2d' in equation:
+        dim = '2d'  
+    else:
+        dim = equation[-2:]
+
     if dim == '2d':
         if equation == 'taylor_couette_2d':
             fn = _eval2d_separable
+        elif equation == 'taylor_couette_2d_cartesian':
+            if args is None:
+                raise ValueError("args must be provided for 'taylor_couette_2d_cartesian' evaluation.")
+            fn = partial(_eval2d_cartesian_velocity, r1=args.r1, r2=args.r2)
         else:
             fn = _eval2d
     elif dim == '3d':

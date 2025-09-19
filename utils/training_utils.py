@@ -13,7 +13,11 @@ from utils.vorticity import (velocity_to_vorticity_fwd,
 
 def setup_networks(args, key):
     # build network
-    dim = args.equation[-2:]
+    if 'taylor_couette_2d' in args.equation:
+        dim = '2d'
+    else:
+        dim = args.equation[-2:]
+    
     if args.model == 'pinn':
         # feature sizes
         feat_sizes = tuple([args.features for _ in range(args.n_layers - 1)] + [args.out_dim])
@@ -30,27 +34,19 @@ def setup_networks(args, key):
 
         if dim == '2d':
             if args.model == 'spinn':
-                # out_dim=1은 u_theta 하나만 예측하기 때문입니다.
-                model = SPINN2d(feat_sizes, args.r, out_dim=1, mlp=args.mlp)
+                model = SPINN2d(feat_sizes, args.r, args.out_dim, args.mlp)
             elif args.model == 'spikan':
                 model = SPIKAN2d(
-                    features=feat_sizes,
-                    r=args.r,
-                    out_dim=1, # u_theta 하나만 예측
-                    kan_k=args.kan_k,
-                    kan_g=args.kan_g
+                    features=feat_sizes, r=args.r, out_dim=args.out_dim,
+                    kan_k=args.kan_k, kan_g=args.kan_g
                 )
         elif dim == '3d':
             if args.model == 'spinn':
                 model = SPINN3d(feat_sizes, args.r, args.out_dim, args.pos_enc, args.mlp)
             elif args.model == 'spikan':
                 model = SPIKAN3d(
-                    features=feat_sizes,
-                    r=args.r,
-                    out_dim=args.out_dim,
-                    pos_enc=args.pos_enc,
-                    kan_k=args.kan_k,
-                    kan_g=args.kan_g
+                    features=feat_sizes, r=args.r, out_dim=args.out_dim,
+                    pos_enc=args.pos_enc, kan_k=args.kan_k, kan_g=args.kan_g
                 )
         elif dim == '4d':
             if args.model == 'spinn':
@@ -71,8 +67,8 @@ def setup_networks(args, key):
         else:
              params = model.init(
                 key,
-                jnp.ones((args.nc, 1)),
-                jnp.ones((args.nc, 1))
+                jnp.ones((args.n_c, 1)),
+                jnp.ones((args.n_c, 1))
             )
     elif dim == '3d':
         if args.equation == 'navier_stokes3d':
@@ -105,10 +101,8 @@ def setup_networks(args, key):
 
 def name_model(args):
     name = [
-        f'nl{args.n_layers}',
-        f'fs{args.features}',
-        f'lr{args.lr}',
-        f's{args.seed}',
+        f'nl{args.n_layers}', f'fs{args.features}',
+        f'lr{args.lr}', f's{args.seed}',
     ]
 
     if args.model in ['spinn', 'spikan']:
@@ -129,7 +123,16 @@ def name_model(args):
         name.append(f'r2_{args.r2}')
         name.append(f'o1_{args.omega1}')
         name.append(f'o2_{args.omega2}')
-        name.append(f'lbda_b{args.lbda_b}') 
+        name.append(f'lbda_b{args.lbda_b}')
+
+    elif args.equation == 'taylor_couette_2d_cartesian':
+        name.insert(0, f'nb{args.n_b}')
+        name.insert(0, f'nc{args.n_c}')
+        name.append(f'r1_{args.r1}')
+        name.append(f'r2_{args.r2}')
+        name.append(f'o1_{args.omega1}')
+        name.append(f'o2_{args.omega2}')
+        name.append(f'lbda_b{args.lbda_b}')
 
     if args.model == 'spinn':
         name.append(f'{args.mlp}')
