@@ -125,7 +125,49 @@ def _taylor_couette_2d(apply_fn, params, test_data, result_dir, e):
     plt.savefig(os.path.join(result_dir, f'vis/{e:05d}/pred.png'))
     plt.close()
 
+def _taylor_couette_2d_cartesian(apply_fn, params, test_data, result_dir, e):
+    print("visualizing solution...")
+    x_vec, y_vec, x_grid, y_grid, u_x_gt, u_y_gt = test_data
+    u_x_pred, u_y_pred = apply_fn(params, x_vec, y_vec)
+    
+    os.makedirs(os.path.join(result_dir, f'vis/{e:05d}'), exist_ok=True)
+    fig, axes = plt.subplots(1, 3, figsize=(21, 6))
+    fig.suptitle(f'Taylor-Couette Flow (Cartesian) at Epoch {e}', fontsize=16)
 
+    gt_mag = jnp.sqrt(u_x_gt**2 + u_y_gt**2)
+    pred_mag = jnp.sqrt(u_x_pred**2 + u_y_pred**2)
+    error_mag = jnp.abs(gt_mag - pred_mag)
+
+    vmin, vmax = jnp.min(gt_mag), jnp.max(gt_mag)
+    skip = 8
+
+    # 1. Reference solution
+    axes[0].set_title('Reference Velocity Field', fontsize=15)
+    axes[0].contourf(x_grid, y_grid, gt_mag, levels=50, cmap='jet', vmin=vmin, vmax=vmax)
+    axes[0].quiver(x_grid[::skip, ::skip], y_grid[::skip, ::skip], u_x_gt[::skip, ::skip], u_y_gt[::skip, ::skip], color='white')
+    axes[0].set_aspect('equal', 'box')
+    axes[0].set_xlabel('x')
+    axes[0].set_ylabel('y')
+
+    # 2. Predicted solution
+    axes[1].set_title('Predicted Velocity Field', fontsize=15)
+    axes[1].contourf(x_grid, y_grid, pred_mag, levels=50, cmap='jet', vmin=vmin, vmax=vmax)
+    axes[1].quiver(x_grid[::skip, ::skip], y_grid[::skip, ::skip], u_x_pred[::skip, ::skip], u_y_pred[::skip, ::skip], color='white')
+    axes[1].set_aspect('equal', 'box')
+    axes[1].set_xlabel('x')
+    axes[1].set_ylabel('y')
+    
+    # 3. Absolute error
+    axes[2].set_title('Absolute Error in Magnitude', fontsize=15)
+    im = axes[2].contourf(x_grid, y_grid, error_mag, levels=50, cmap='inferno')
+    axes[2].set_aspect('equal', 'box')
+    axes[2].set_xlabel('x')
+    axes[2].set_ylabel('y')
+    fig.colorbar(im, ax=axes[2], fraction=0.046, pad=0.04)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.savefig(os.path.join(result_dir, f'vis/{e:05d}/pred.png'))
+    plt.close()
 
 def show_solution(args, apply_fn, params, test_data, result_dir, e, resol=50):
     if args.equation == 'navier_stokes3d':
@@ -134,5 +176,7 @@ def show_solution(args, apply_fn, params, test_data, result_dir, e, resol=50):
         _navier_stokes4d(apply_fn, params, test_data, result_dir, e)
     elif args.equation == 'taylor_couette_2d':
         _taylor_couette_2d(apply_fn, params, test_data, result_dir, e)
+    elif args.equation == 'taylor_couette_2d_cartesian':
+        _taylor_couette_2d_cartesian(apply_fn, params, test_data, result_dir, e)
     else:
         raise NotImplementedError

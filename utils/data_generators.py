@@ -398,9 +398,9 @@ def _test_generator_taylor_couette_2d(args):
 def _test_generator_taylor_couette_2d_cartesian(args):
     nr_eval, ntheta_eval = args.nr_eval, args.ntheta_eval
     
-    r_vec = jnp.linspace(args.r1, args.r2, nr_eval)
-    theta_vec = jnp.linspace(0, 2 * jnp.pi, ntheta_eval)
-    r_grid, theta_grid = jnp.meshgrid(r_vec, theta_vec, indexing='ij')
+    r_vec_gt = jnp.linspace(args.r1, args.r2, nr_eval)
+    theta_vec_gt = jnp.linspace(0, 2 * jnp.pi, ntheta_eval)
+    r_grid, theta_grid = jnp.meshgrid(r_vec_gt, theta_vec_gt, indexing='ij')
     
     x_grid = r_grid * jnp.cos(theta_grid)
     y_grid = r_grid * jnp.sin(theta_grid)
@@ -409,10 +409,10 @@ def _test_generator_taylor_couette_2d_cartesian(args):
     u_x_gt = -u_theta_gt * jnp.sin(theta_grid)
     u_y_gt = u_theta_gt * jnp.cos(theta_grid)
     
-    x_vec = jnp.linspace(-args.r2, args.r2, nr_eval).reshape(-1, 1)
-    y_vec = jnp.linspace(-args.r2, args.r2, nr_eval).reshape(-1, 1)
+    x_vec_pred = jnp.linspace(-args.r2, args.r2, nr_eval).reshape(-1, 1)
+    y_vec_pred = jnp.linspace(-args.r2, args.r2, ntheta_eval).reshape(-1, 1)
     
-    return x_vec, y_vec, x_grid, y_grid, u_x_gt, u_y_gt
+    return x_vec_pred, y_vec_pred, x_grid, y_grid, u_x_gt, u_y_gt
 
 
 def generate_test_data(args, result_dir):
