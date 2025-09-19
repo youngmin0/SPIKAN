@@ -6,7 +6,7 @@ import scipy.io
 
 
 #======================== Navier-Stokes equation 3-d ========================#
-#---------------------------------- SPINN -----------------------------------#
+#---------------------------------- SPINN, SPIKAN -----------------------------------#
 def _spinn_train_generator_navier_stokes3d(nt, nxy, data_dir, result_dir, marching_steps, step_idx, offset_num, key):
     keys = jax.random.split(key, 2)
     gt_data = scipy.io.loadmat(os.path.join(data_dir, 'w_data.mat'))
@@ -61,7 +61,7 @@ def _spinn_train_generator_navier_stokes3d(nt, nxy, data_dir, result_dir, marchi
 
 
 #======================== Navier-Stokes equation 4-d ========================#
-#---------------------------------- SPINN -----------------------------------#
+#---------------------------------- SPINN, SPIKAN -----------------------------------#
 @partial(jax.jit, static_argnums=(0,))
 def _spinn_train_generator_navier_stokes4d(nc, nu, key):
     keys = jax.random.split(key, 4)
@@ -150,7 +150,7 @@ def _pinn_train_generator_flow_mixing3d(nc, v_max, key):
     return tc, xc, yc, ti, xi, yi, ui, tb, xb, yb, ub, a, b
 
 
-#----------------------------- SPINN -----------------------------#
+#----------------------------- SPINN, SPIKAN -----------------------------#
 @partial(jax.jit, static_argnums=(0,))
 def _spinn_train_generator_flow_mixing3d(nc, v_max, key):
     keys = jax.random.split(key, 3)
@@ -181,6 +181,37 @@ def _spinn_train_generator_flow_mixing3d(nc, v_max, key):
     return tc, xc, yc, ti, xi, yi, ui, tb, xb, yb, ub, a, b
 
 
+#======================== Taylor-Couette flow2d ========================#
+#---------------------------------- SPINN, SPIKAN -----------------------------------#
+#---------------------------------- SPINN, SPIKAN -----------------------------------#
+def _train_generator_taylor_couette_2d(args, key):
+    R1, R2, Omega1, Omega2 = args.r1, args.r2, args.omega1, args.omega2
+    nr_c, ntheta_c, n_b = args.nr_c, args.ntheta_c, args.n_b
+
+    keys = jax.random.split(key, 2)
+
+    #Collocation points
+    rc = jax.random.uniform(keys[0], (nr_c, 1), minval=R1, maxval=R2)
+    thetac = jax.random.uniform(keys[1], (ntheta_c, 1), minval=0., maxval=2.*jnp.pi)
+
+    #Boundary points
+    thetab = jnp.linspace(0, 2 * jnp.pi, n_b).reshape(-1, 1)
+    
+    # r = R1
+    rb1 = jnp.full_like(thetab, R1)
+    u_thetab1 = jnp.full_like(thetab, Omega1 * R1)
+    
+    # r = R2
+    rb2 = jnp.full_like(thetab, R2)
+    u_thetab2 = jnp.full_like(thetab, Omega2 * R2)
+    
+    rb = jnp.concatenate([rb1, rb2], axis=0)
+    thetab_combined = jnp.concatenate([thetab, thetab], axis=0)
+    u_thetab = jnp.concatenate([u_thetab1, u_thetab2], axis=0)
+
+    return rc, thetac, rb, thetab_combined, u_thetab
+
+
 
 def generate_train_data(args, key, result_dir=None):
     eqn = args.equation
@@ -203,6 +234,10 @@ def generate_train_data(args, key, result_dir=None):
         elif eqn == 'flow_mixing3d':
             data = _spinn_train_generator_flow_mixing3d(
                 args.nc, args.vmax, key
+            )
+        elif eqn == 'taylor_couette_2d':
+            data = _train_generator_taylor_couette_2d(
+                args, key
             )
         else:
             raise NotImplementedError
@@ -309,6 +344,22 @@ def _test_generator_flow_mixing3d(model, nc_test, v_max):
     return t, x, y, u_gt
 
 
+#======================== Taylor-Couette flow2d ========================#
+def _test_generator_taylor_couette_2d(args):
+    R1, R2, Omega1, Omega2 = args.r1, args.r2, args.omega1, args.omega2
+    nr_eval, ntheta_eval = args.nr_eval, args.ntheta_eval
+
+    A = (Omega2 * R2**2 - Omega1 * R1**2) / (R2**2 - R1**2)
+    B = (Omega1 - Omega2) * R1**2 * R2**2 / (R2**2 - R1**2)
+
+    r_vec = jnp.linspace(R1, R2, nr_eval).reshape(-1, 1)
+    theta_vec = jnp.linspace(0, 2 * jnp.pi, ntheta_eval).reshape(-1, 1)
+    r_grid, theta_grid = jnp.meshgrid(r_vec.ravel(), theta_vec.ravel(), indexing='ij')
+
+    u_theta_gt = A * r_grid + B / r_grid
+    
+    return r_vec, theta_vec, u_theta_gt
+
 
 def generate_test_data(args, result_dir):
     eqn = args.equation
@@ -324,6 +375,8 @@ def generate_test_data(args, result_dir):
         data = _test_generator_flow_mixing3d(
             args.model, args.nc_test, args.vmax
         )
+    elif eqn == 'taylor_couette_2d':
+        data = _test_generator_taylor_couette_2d(args)
     else:
         raise NotImplementedError
     return data

@@ -50,3 +50,11 @@ def flow_mixing3d_params(t, x, y, v_max, require_ab=False):
         a = -(v_t/v_max)*(y/r)
         b = (v_t/v_max)*(x/r)
     return omega, a, b
+
+@jax.jit
+def taylor_couette_2d_exact_u(r, R1, R2, Omega1, Omega2):
+    A = (Omega2 * R2**2 - Omega1 * R1**2) / (R2**2 - R1**2)
+    B = (Omega1 - Omega2) * R1**2 * R2**2 / (R2**2 - R1**2)
+    u_theta = A * r + B / r
+    
+    return u_theta

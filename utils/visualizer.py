@@ -1,5 +1,5 @@
 import os
-
+import numpy as np
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
@@ -7,7 +7,6 @@ from utils.vorticity import velocity_to_vorticity_fwd
 from utils.vorticity import vorx, vory, vorz
 
 import pdb
-
 
 
 def _navier_stokes3d(apply_fn, params, test_data, result_dir, e):
@@ -83,6 +82,49 @@ def _navier_stokes4d(apply_fn, params, test_data, result_dir, e):
     plt.savefig(os.path.join(result_dir, f'vis/{e:05d}/pred.png'))
     plt.close()
 
+def _taylor_couette_2d(apply_fn, params, test_data, result_dir, e):
+    print("visualizing solution...")
+
+    r_vec, theta_vec, u_gt = test_data
+
+    u_pred = apply_fn(params, r_vec, theta_vec)
+
+    r_grid, theta_grid = np.meshgrid(r_vec.ravel(), theta_vec.ravel(), indexing='ij')
+    
+    os.makedirs(os.path.join(result_dir, f'vis/{e:05d}'), exist_ok=True)
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), subplot_kw=dict(projection='polar'))
+    fig.suptitle(f'Taylor-Couette Flow at Epoch {e}', fontsize=16)
+
+    vmin = jnp.min(u_gt)
+    vmax = jnp.max(u_gt)
+
+    # 1. Reference solution
+    ax1 = axes[0]
+    c1 = ax1.pcolormesh(theta_grid, r_grid, u_gt, cmap='jet', vmin=vmin, vmax=vmax)
+    ax1.set_title('Reference $u_\\theta(r, \\theta)$', fontsize=15, pad=20)
+    ax1.set_yticklabels([]) 
+
+    # Predicted solution 
+    ax2 = axes[1]
+    c2 = ax2.pcolormesh(theta_grid, r_grid, u_pred, cmap='jet', vmin=vmin, vmax=vmax)
+    ax2.set_title('Predicted $u_\\theta(r, \\theta)$', fontsize=15, pad=20)
+    ax2.set_yticklabels([])
+
+    # Absolute error
+    ax3 = axes[2]
+    error = jnp.abs(u_gt - u_pred)
+    c3 = ax3.pcolormesh(theta_grid, r_grid, error, cmap='inferno', vmin=0, vmax=jnp.max(error))
+    ax3.set_title('Absolute Error', fontsize=15, pad=20)
+    ax3.set_yticklabels([])
+
+    fig.colorbar(c1, ax=axes[0:2], orientation='vertical', fraction=0.046, pad=0.04)
+    fig.colorbar(c3, ax=axes[2], orientation='vertical', fraction=0.046, pad=0.04)
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.savefig(os.path.join(result_dir, f'vis/{e:05d}/pred.png'))
+    plt.close()
+
 
 
 def show_solution(args, apply_fn, params, test_data, result_dir, e, resol=50):
@@ -90,5 +132,7 @@ def show_solution(args, apply_fn, params, test_data, result_dir, e, resol=50):
         _navier_stokes3d(apply_fn, params, test_data, result_dir, e)
     elif args.equation == 'navier_stokes4d':
         _navier_stokes4d(apply_fn, params, test_data, result_dir, e)
+    elif args.equation == 'taylor_couette_2d':
+        _taylor_couette_2d(apply_fn, params, test_data, result_dir, e)
     else:
         raise NotImplementedError

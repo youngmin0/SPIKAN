@@ -94,33 +94,39 @@ class PINN4d(nn.Module):
 class SPINN2d(nn.Module):
     features: Sequence[int]
     r: int
+    out_dim: int
     mlp: str
 
     @nn.compact
     def __call__(self, x, y):
         inputs, outputs = [x, y], []
         init = nn.initializers.glorot_normal()
-        if self.mlp == 'mlp':
-            for X in inputs:
-                for fs in self.features[:-1]:
-                    X = nn.Dense(fs, kernel_init=init)(X)
-                    X = nn.activation.tanh(X)
-                X = nn.Dense(self.r, kernel_init=init)(X)
-                outputs += [X]
-        else:
-            for X in inputs:
+        
+        for X in inputs:
+            if self.mlp == 'modified_mlp':
                 U = nn.activation.tanh(nn.Dense(self.features[0], kernel_init=init)(X))
                 V = nn.activation.tanh(nn.Dense(self.features[0], kernel_init=init)(X))
                 H = nn.activation.tanh(nn.Dense(self.features[0], kernel_init=init)(X))
-                for fs in self.features[:-1]:
+                for fs in self.features[1:]:
                     Z = nn.Dense(fs, kernel_init=init)(H)
                     Z = nn.activation.tanh(Z)
                     H = (jnp.ones_like(Z)-Z)*U + Z*V
-                H = nn.Dense(self.r, kernel_init=init)(H)
-                outputs += [H]
+            else: 
+                H = X
+                for fs in self.features:
+                    H = nn.Dense(fs, kernel_init=init)(H)
+                    H = nn.activation.tanh(H)
+            
+            H = nn.Dense(self.r * self.out_dim, kernel_init=init)(H)
+            outputs.append(jnp.transpose(H, (1, 0)))
 
-        return jnp.dot(outputs[0], outputs[-1].T)
+        pred = []
+        for i in range(self.out_dim):
+            vec1 = outputs[0][self.r * i:self.r * (i + 1)]
+            vec2 = outputs[1][self.r * i:self.r * (i + 1)]
+            pred.append(jnp.einsum('ri, rj->ij', vec1, vec2))
 
+        return pred if self.out_dim > 1 else pred[0]
 
 class SPINN3d(nn.Module):
     features: Sequence[int]
@@ -318,6 +324,41 @@ class LinenKANLayer(nn.Module):
         scaled_spline = jnp.einsum('boi,oi->bo', spline_out, self.scale)
         
         return scaled_spline + self.bias
+    
+
+class SPIKAN2d(nn.Module):
+    features: Sequence[int]
+    r: int
+    out_dim: int
+    kan_k: int
+    kan_g: int
+
+    @nn.compact
+    def __call__(self, coord1, coord2):
+        inputs = [coord1, coord2]
+        outputs = []
+
+        for i in range(2):
+            current_input = inputs[i]
+            for layer_idx, feat in enumerate(self.features):
+                current_input = LinenKANLayer(
+                    in_features=current_input.shape[-1], 
+                    out_features=feat, 
+                    spline_order=self.kan_k, 
+                    grid_size=self.kan_g,
+                    name=f'kan_dim_{i}_layer_{layer_idx}'
+                )(current_input)
+            
+            H = nn.Dense(features=self.r * self.out_dim, name=f'dense_dim_{i}')(current_input)
+            outputs.append(jnp.transpose(H, (1, 0)))
+
+        pred = []
+        for i in range(self.out_dim):
+            vec1 = outputs[0][self.r * i:self.r * (i + 1)]
+            vec2 = outputs[1][self.r * i:self.r * (i + 1)]
+            pred.append(jnp.einsum('ri, rj->ij', vec1, vec2))
+
+        return pred if self.out_dim > 1 else pred[0]
 
 
 class SPIKAN3d(nn.Module):

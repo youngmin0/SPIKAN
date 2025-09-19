@@ -26,39 +26,54 @@ def setup_networks(args, key):
         else:
             raise NotImplementedError
     else:  # SPINN or SPIKAN
-        # feature sizes
         feat_sizes = tuple([args.features for _ in range(args.n_layers)])
-        if args.model == 'spinn':
-            if dim == '2d':
-                model = SPINN2d(feat_sizes, args.r, args.mlp)
-            elif dim == '3d':
+
+        if dim == '2d':
+            if args.model == 'spinn':
+                # out_dim=1은 u_theta 하나만 예측하기 때문입니다.
+                model = SPINN2d(feat_sizes, args.r, out_dim=1, mlp=args.mlp)
+            elif args.model == 'spikan':
+                model = SPIKAN2d(
+                    features=feat_sizes,
+                    r=args.r,
+                    out_dim=1, # u_theta 하나만 예측
+                    kan_k=args.kan_k,
+                    kan_g=args.kan_g
+                )
+        elif dim == '3d':
+            if args.model == 'spinn':
                 model = SPINN3d(feat_sizes, args.r, args.out_dim, args.pos_enc, args.mlp)
-            elif dim == '4d':
-                model = SPINN4d(feat_sizes, args.r, args.out_dim, args.mlp)
-            else:
-                raise NotImplementedError
-        elif args.model == 'spikan':
-            if dim == '3d':
+            elif args.model == 'spikan':
                 model = SPIKAN3d(
                     features=feat_sizes,
                     r=args.r,
                     out_dim=args.out_dim,
                     pos_enc=args.pos_enc,
-                    kan_k=args.kan_k,  # '--kan_k' 인자가 kan_k에 정확히 전달됨
-                    kan_g=args.kan_g   # '--kan_g' 인자가 kan_g에 정확히 전달됨
+                    kan_k=args.kan_k,
+                    kan_g=args.kan_g
                 )
+        elif dim == '4d':
+            if args.model == 'spinn':
+                model = SPINN4d(feat_sizes, args.r, args.out_dim, args.mlp)
             else:
-                raise NotImplementedError(f"SPIKAN not implemented for {dim}")
+                 raise NotImplementedError(f"SPIKAN not implemented for {dim}")
         else:
-            raise NotImplementedError(f"SPINN/SPIKAN not implemented for {dim}")
+            raise NotImplementedError(f"Model not implemented for {dim}")
     # initialize params
     # dummy inputs must be given
     if dim == '2d':
-        params = model.init(
-            key,
-            jnp.ones((args.nc, 1)),
-            jnp.ones((args.nc, 1))
-        )
+        if args.equation == 'taylor_couette_2d':
+            params = model.init(
+                key,
+                jnp.ones((args.nr_c, 1)),
+                jnp.ones((args.ntheta_c, 1))
+            )
+        else:
+             params = model.init(
+                key,
+                jnp.ones((args.nc, 1)),
+                jnp.ones((args.nc, 1))
+            )
     elif dim == '3d':
         if args.equation == 'navier_stokes3d':
             params = model.init(
@@ -95,10 +110,10 @@ def name_model(args):
         f'lr{args.lr}',
         f's{args.seed}',
     ]
+
     if args.model in ['spinn', 'spikan']:
         name.append(f'r{args.r}')
-    if args.equation != 'navier_stokes3d':
-        name.insert(0, f'nc{args.nc}')
+
     if args.equation == 'navier_stokes3d':
         name.insert(0, f'nxy{args.nxy}')
         name.insert(0, f'nt{args.nt}')
@@ -106,12 +121,16 @@ def name_model(args):
         name.append(f'oi{args.offset_iter}')
         name.append(f'lc{args.lbda_c}')
         name.append(f'lic{args.lbda_ic}')
-    if args.equation == 'navier_stokes4d':
-        name.append(f'lc{args.lbda_c}')
-        name.append(f'li{args.lbda_ic}')
     
-    name.append(f'{args.mlp}')
-        
+    elif args.equation == 'taylor_couette_2d':
+        name.insert(0, f'ntheta_c{args.ntheta_c}')
+        name.insert(0, f'nr_c{args.nr_c}')
+        name.append(f'r1_{args.r1}')
+        name.append(f'r2_{args.r2}')
+        name.append(f'o1_{args.omega1}')
+        name.append(f'o2_{args.omega2}')
+        name.append(f'lbda_b{args.lbda_b}') 
+
     if args.model == 'spinn':
         name.append(f'{args.mlp}')
     elif args.model == 'spikan':
