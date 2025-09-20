@@ -55,6 +55,10 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=50000, help='Training epochs')
     parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate')
 
+    lr_decay_parser = parser.add_argument_group('Learning Rate Decay Settings')
+    lr_decay_parser.add_argument('--lr_decay_steps', type=int, default=5000, help='Steps over which learning rate decays.')
+    lr_decay_parser.add_argument('--lr_decay_rate', type=float, default=0.9, help='Decay rate.')
+
     parser.add_argument('--nu', type=float, default=0.1, help='Kinematic viscosity')
     parser.add_argument('--r1', type=float, default=1.0, help='Inner cylinder radius')
     parser.add_argument('--r2', type=float, default=2.0, help='Outer cylinder radius')
@@ -82,6 +86,7 @@ if __name__ == '__main__':
     parser.add_argument('--plot_iter', type=int, default=10000, help='Plot result every...')
     
     args = parser.parse_args()
+    args.out_dim = 1
 
     key = jax.random.PRNGKey(args.seed)
     key, subkey = jax.random.split(key, 2)
@@ -94,7 +99,13 @@ if __name__ == '__main__':
     result_dir = os.path.join(root_dir, name)
     os.makedirs(result_dir, exist_ok=True)
 
-    optim = optax.adam(learning_rate=args.lr)
+    lr_schedule = optax.exponential_decay(
+        init_value=args.lr,
+        transition_steps=args.lr_decay_steps,
+        decay_rate=args.lr_decay_rate
+    )
+
+    optim = optax.adam(learning_rate=lr_schedule)
     state = optim.init(params)
 
     save_config(args, result_dir)
