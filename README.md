@@ -51,9 +51,6 @@ SPINN r = 3
 SPINN Cartesian r = 20
 ```sh
 !python taylor_couette2d_cartesian.py --model spinn --features 20 --r 20 --lr 2e-4 --epochs 50000 --lbda_b 100
-<<<<<<< HEAD
-```
-=======
 ```
 
 [contributors-shield]: https://img.shields.io/github/contributors/youngmin0/SPIKAN.svg?style=for-the-badge
