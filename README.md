@@ -42,12 +42,9 @@ SPINN r = 20
 
 SPINN r = 3
 ```sh
-<<<<<<< HEAD
 !python taylor_couette2d.py --model spinn --features   20 --r 3 --lr 2e-4 --epochs 50000 --lbda_b 100 --lr_decay_steps 2500 --lr_decay_rate 0.9
-=======
-!python taylor_couette2d.py --model spinn --features 20 --r 2 --lr 2e-4 --epochs 50000 --lbda_b 100 --lr_decay_steps 2500 --lr_decay_rate 0.9
->>>>>>> 8773c4f4ea969b9855a329f1328692ae21849a06
 ```
+
 SPINN Cartesian r = 20
 ```sh
 !python taylor_couette2d_cartesian.py --model spinn --features 20 --r 20 --lr 2e-4 --epochs 50000 --lbda_b 100
@@ -70,4 +67,3 @@ SPINN Cartesian r = 20
 [PyAutoGUI-url]: https://pyautogui.readthedocs.io/
 [Pynput-shield]: https://img.shields.io/badge/Pynput-informational?style=for-the-badge&logo=python&logoColor=white
 [Pynput-url]: https://pynput.readthedocs.io/
->>>>>>> 8773c4f4ea969b9855a329f1328692ae21849a06
