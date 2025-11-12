@@ -6,9 +6,8 @@ import jax.numpy as jnp
 import optax
 from functools import partial
 from jax import jvp, grad
-from flax import linen as nn
-from typing import Sequence
 import matplotlib.cm as cm
+from networks.physics_informed_neural_networks import PINN2d
 
 @partial(jax.jit, static_argnums=(0,))
 def hvp_fwdfwd(fn, primals, tangents):
@@ -25,33 +24,14 @@ def hvp_fwdfwd(fn, primals, tangents):
     g = grad(lambda x: fn(x[:, None]).sum())(primals) 
     return jvp(lambda x: grad(lambda x: fn(x[:, None]).sum())(x), (primals,), (tangents,))[1][:, None] 
 
-try:
-    from networks.physics_informed_neural_networks import PINN2d
-except ImportError:
-    print("오류: 'networks.physics_informed_neural_networks'에서 PINN2d를 찾을 수 없습니다.")
-    class PINN2d(nn.Module):
-        features: Sequence[int]
-        @nn.compact
-        def __call__(self, x, y):
-            X = jnp.concatenate([x, y], axis=1)
-            init = nn.initializers.glorot_normal()
-            for fs in self.features[:-1]:
-                X = nn.Dense(fs, kernel_init=init)(X)
-                X = nn.activation.tanh(X)
-            X = nn.Dense(self.features[-1], kernel_init=init)(X)
-            return X
 
 def calculate_si(matrix):
-    try:
-        matrix_np = np.array(matrix)
-        matrix_np = np.nan_to_num(matrix_np) 
-        singular_values = svd(matrix_np, compute_uv=False)
-        if np.sum(singular_values) < 1e-9: return 0.0, singular_values
-        si = singular_values[0] / np.sum(singular_values)
-        return si, singular_values
-    except Exception as e:
-        print(f"SVD 계산 중 오류 발생: {e}")
-        return 0.0, []
+    matrix_np = np.array(matrix)
+    matrix_np = np.nan_to_num(matrix_np) 
+    singular_values = svd(matrix_np, compute_uv=False)
+    if np.sum(singular_values) < 1e-9: return 0.0, singular_values
+    si = singular_values[0] / np.sum(singular_values)
+    return si, singular_values
 
 def estimate_reff(singular_values, threshold=0.999):
     if np.sum(singular_values) < 1e-9: return 0, np.array([0])
@@ -91,8 +71,7 @@ def loss_fn_low_cost_polar(apply_fn, params, rc, thetac, rb, thetab):
 
     def residual_loss(params, r, theta):
         def model_output(r, theta):
-            inputs = jnp.concatenate([r, theta], axis=1)
-            outputs = apply_fn({'params': params}, inputs)
+            outputs = apply_fn({'params': params}, r, theta)
             return outputs[:, 0:1] 
         
         v_fn_r = lambda r_arg: model_output(r_arg, theta)
@@ -108,8 +87,7 @@ def loss_fn_low_cost_polar(apply_fn, params, rc, thetac, rb, thetab):
         return jnp.mean(residual**2)
 
     def boundary_loss(params, r_b, theta_b, vtheta_b):
-        inputs_b = jnp.concatenate([r_b, theta_b], axis=1)
-        outputs_b = apply_fn({'params': params}, inputs_b)
+        outputs_b = apply_fn({'params': params}, r_b, theta_b)
         vtheta_pred = outputs_b[:, 0:1]
         
         loss_vtheta = jnp.mean((vtheta_pred - vtheta_b)**2)
@@ -128,18 +106,17 @@ def loss_fn_low_cost_cartesian(apply_fn, params, xc, yc, xb, yb):
 
     @jax.jit
     def model_output(x, y):
-        inputs = jnp.concatenate([x, y], axis=1)
-        outputs = apply_fn({'params': params}, inputs)
+        outputs = apply_fn({'params': params}, x, y)
         return outputs[:, 0:1], outputs[:, 1:2], outputs[:, 2:3] 
 
     def residual_loss(params, x, y):
         
         def u_scalar(x_s, y_s):
-            return apply_fn({'params': params}, jnp.array([[x_s, y_s]]))[0, 0]
+            return apply_fn({'params': params}, jnp.array([[x_s]]), jnp.array([[y_s]]))[0, 0]
         def v_scalar(x_s, y_s):
-            return apply_fn({'params': params}, jnp.array([[x_s, y_s]]))[0, 1]
+            return apply_fn({'params': params}, jnp.array([[x_s]]), jnp.array([[y_s]]))[0, 1]
         def p_scalar(x_s, y_s):
-            return apply_fn({'params': params}, jnp.array([[x_s, y_s]]))[0, 2]
+            return apply_fn({'params': params}, jnp.array([[x_s]]), jnp.array([[y_s]]))[0, 2]
 
         u_vec = jax.vmap(u_scalar)(x.flatten(), y.flatten())[:, None]
         v_vec = jax.vmap(v_scalar)(x.flatten(), y.flatten())[:, None]
@@ -190,22 +167,11 @@ def get_low_res_solution_jax(is_polar, key):
 
     key, model_key, data_key = jax.random.split(key, 3)
 
-    class PINN2d_Input(nn.Module):
-        features: Sequence[int]
-        @nn.compact
-        def __call__(self, X): 
-            init = nn.initializers.glorot_normal()
-            for fs in self.features[:-1]:
-                X = nn.Dense(fs, kernel_init=init)(X)
-                X = nn.activation.tanh(X)
-            X = nn.Dense(self.features[-1], kernel_init=init)(X)
-            return X
-
     if is_polar:
         print("--- Polar 저비용 PINN (PDE + BC) 학습 시작 ---")
         
         low_cost_features = [16, 16, 1] 
-        model = PINN2d_Input(features=low_cost_features)
+        model = PINN2d(features=low_cost_features)
         
         key_b1, key_b2, key_rc, key_tc = jax.random.split(data_key, 4)
         
@@ -220,7 +186,7 @@ def get_low_res_solution_jax(is_polar, key):
         rc = r_c
         thetac = theta_c
         
-        params = model.init(model_key, jnp.concatenate([rc, thetac], axis=1))['params']
+        params = model.init(model_key, rc, thetac)['params']
         optimizer = optax.adam(lr)
         opt_state = optimizer.init(params)
 
@@ -245,8 +211,9 @@ def get_low_res_solution_jax(is_polar, key):
         theta_vec = jnp.linspace(0, 2 * jnp.pi, grid_res)
         rr, tt = jnp.meshgrid(r_vec, theta_vec, indexing='ij')
         
-        eval_input = jnp.stack([rr.flatten(), tt.flatten()], axis=1)
-        output = model.apply({'params': params}, eval_input)
+        rr_flat = rr.flatten()[:, None]
+        tt_flat = tt.flatten()[:, None]
+        output = model.apply({'params': params}, rr_flat, tt_flat)
         
         sol1 = jnp.zeros((grid_res, grid_res)) 
         sol2 = output[:, 0].reshape(grid_res, grid_res) 
@@ -256,7 +223,7 @@ def get_low_res_solution_jax(is_polar, key):
         print("--- Cartesian 저비용 PINN (PDE + BC) 학습 시작 ---")
         
         low_cost_features = [16, 16, 3] 
-        model = PINN2d_Input(features=low_cost_features)
+        model = PINN2d(features=low_cost_features)
 
         key_b1, key_b2, key_rc, key_tc = jax.random.split(data_key, 4)
 
@@ -274,7 +241,7 @@ def get_low_res_solution_jax(is_polar, key):
         xc = r_c * jnp.cos(theta_c)
         yc = r_c * jnp.sin(theta_c)
         
-        params = model.init(model_key, jnp.concatenate([xc, yc], axis=1))['params']
+        params = model.init(model_key, xc, yc)['params']
         optimizer = optax.adam(lr)
         opt_state = optimizer.init(params)
         
@@ -292,7 +259,6 @@ def get_low_res_solution_jax(is_polar, key):
         x_vec_eval = jnp.linspace(-R2, R2, grid_res)
         y_vec_eval = jnp.linspace(-R2, R2, grid_res)
         xx, yy = jnp.meshgrid(x_vec_eval, y_vec_eval, indexing='ij')
-        test_input = jnp.stack([xx.flatten(), yy.flatten()], axis=1)
 
         for e in range(N_low_cost_epochs):
             params, opt_state, loss = train_step_cartesian(params, opt_state)
@@ -305,7 +271,10 @@ def get_low_res_solution_jax(is_polar, key):
 
         print("--- Cartesian 저비용 PINN 학습 완료 ---")
 
-        output = model.apply({'params': params}, test_input)
+        xx_flat = xx.flatten()[:, None]
+        yy_flat = yy.flatten()[:, None]
+        output = model.apply({'params': params}, xx_flat, yy_flat)
+        
         sol1 = output[:, 0].reshape(grid_res, grid_res) 
         sol2 = output[:, 1].reshape(grid_res, grid_res) 
 
@@ -315,15 +284,13 @@ def get_low_res_solution_jax(is_polar, key):
         sol1 = sol1.at[mask].set(jnp.nan)
         sol2 = sol2.at[mask].set(jnp.nan)
             
-        return sol1, sol2, xx, yy 
+        return sol1, sol2, xx, yy
 
 key = jax.random.PRNGKey(42)
 keys = jax.random.split(key, 2)
 
-print("--- 1단계: 저비용 PINN으로 '저주파 근사해' 생성 ---")
 u_low_res, v_low_res, xx, yy = get_low_res_solution_jax(is_polar=False, key=keys[0])
 vr_low_res, vtheta_low_res, rr, tt = get_low_res_solution_jax(is_polar=True, key=keys[1]) 
-print("저주파 근사해 생성 완료.\n")
 
 try:
     plt.rcParams['font.family'] = 'serif'
@@ -344,7 +311,6 @@ except Exception as e:
          print("Font setting failed. Using default font.")
          pass
 
-print("--- Plot C: 직교좌표계 해 비교 플롯 생성 ---")
 vx_exact, vy_exact = get_analytical_solution_cartesian(xx, yy)
 
 r_cart_exact_plot = jnp.sqrt(xx**2 + yy**2)
@@ -387,9 +353,7 @@ fig_c.colorbar(im6, ax=axes_c[1, 2])
 
 plt.tight_layout(rect=[0, 0, 1, 0.97])
 plt.savefig("SPINN_Plot_Solutions_Cartesian.png", dpi=300)
-print("그래프 (C)를 'SPINN_Plot_Solutions_Cartesian.png' (300 dpi) 파일 저장")
 
-print("--- Plot D: 극좌표계 해 비교 플롯 생성 ---")
 vr_exact, vtheta_exact = get_analytical_solution_polar(rr, tt)
 vr_error = vr_low_res - vr_exact
 vtheta_error = vtheta_low_res - vtheta_exact
@@ -421,9 +385,7 @@ fig_d.colorbar(im6, ax=axes_d[1, 2])
 
 plt.tight_layout(rect=[0, 0, 1, 0.97])
 plt.savefig("SPINN_Plot_Solutions_Polar.png", dpi=300)
-print("그래프 (D)를 'SPINN_Plot_Solutions_Polar.png' (300 dpi) 파일 저장")
 
-print("--- 2단계: 분리 가능성 지수(SI) 계산 ---")
 si_u, s_u = calculate_si(u_low_res)
 si_v, s_v = calculate_si(v_low_res)
 si_vr, s_vr = calculate_si(vr_low_res)
@@ -444,13 +406,10 @@ else:
     optimal_system = "직교좌표계 (Cartesian)"
     optimal_s = s_u if si_u > si_v else s_v
     print("\n결론: 저주파 근사해 분석 결과, 직교좌표계가 최적 좌표계로 선택되었습니다.")
-
-print("\n--- 3단계: 최소 유효 랭크(reff) 추정 ---")
 reff, cumulative_energy = estimate_reff(optimal_s)
 print(f"선택된 '{optimal_system}'에서,")
 print(f"에너지의 99.9%를 보존하는 최소 유효 랭크(reff)는 {reff}로 추정됩니다.")
 
-print("\n--- Plot A: Combined Singular Values ---")
 fig, ax = plt.subplots(1, 1, figsize=(6, 4)) 
 
 if np.sum(s_u) > 1e-9:
@@ -472,9 +431,6 @@ ax.set_xlim(left=-1, right=grid_res)
 
 plt.tight_layout()
 plt.savefig("SPINN_Plot_A_SingularValues.png", dpi=300, bbox_inches='tight')
-print("\n그래프 (A)를 'SPINN_Plot_A_SingularValues.png' (300 dpi) 파일 저장")
-
-print("\n--- Plot B: Effective Rank (reff) Estimation ---")
 fig, ax = plt.subplots(1, 1, figsize=(6, 4))
 ax.plot(range(1, len(cumulative_energy) + 1), cumulative_energy, 'o-', color='black', markersize=4, linewidth=1.5, label='Cumulative Energy')
 ax.axhline(y=0.999, color='r', linestyle='--', linewidth=1.5, label='99.9% Threshold')
@@ -491,7 +447,6 @@ ax.grid(False)
 
 plt.tight_layout()
 plt.savefig("SPINN_Plot_B_Reff.png", dpi=300, bbox_inches='tight')
-print("\n그래프 (B)를 'SPINN_Plot_B_Reff.png' (300 dpi) 파일 저장")
 
 print(f"  - 예측된 최적 좌표계: {optimal_system}")
 print(f"  - 예측된 권장 랭크: {reff}")
