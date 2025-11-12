@@ -66,35 +66,69 @@ def get_analytical_solution_cartesian(x, y):
 
 @partial(jax.jit, static_argnums=(0,))
 def loss_fn_low_cost_polar(apply_fn, params, rc, thetac, rb, thetab):
-    
-    _, vtheta_b = get_analytical_solution_polar(rb, thetab) 
+    vr_b, vtheta_b = get_analytical_solution_polar(rb, thetab) 
+
+    @jax.jit
+    def model_output(r, theta):
+        outputs = apply_fn({'params': params}, r, theta)
+        return outputs[:, 0:1], outputs[:, 1:2], outputs[:, 2:3] 
 
     def residual_loss(params, r, theta):
-        def model_output(r, theta):
-            outputs = apply_fn({'params': params}, r, theta)
-            return outputs[:, 0:1] 
-        
-        v_fn_r = lambda r_arg: model_output(r_arg, theta)
-        
-        vec_r = jnp.ones_like(r)
-        
-        dv_dr = jvp(v_fn_r, (r,), (vec_r,))[1]
-        d2v_dr2 = hvp_fwdfwd(v_fn_r, (r,), (vec_r,))
-        
-        v_theta = model_output(r, theta)
-        
-        residual = nu * (d2v_dr2 + (1.0 / r) * dv_dr - (v_theta / r**2))
-        return jnp.mean(residual**2)
+        def v_r_scalar(r_s, theta_s):
+            return apply_fn({'params': params}, jnp.array([[r_s]]), jnp.array([[theta_s]]))[0, 0]
+        def v_theta_scalar(r_s, theta_s):
+            return apply_fn({'params': params}, jnp.array([[r_s]]), jnp.array([[theta_s]]))[0, 1]
+        def p_scalar(r_s, theta_s):
+            return apply_fn({'params': params}, jnp.array([[r_s]]), jnp.array([[theta_s]]))[0, 2]
 
-    def boundary_loss(params, r_b, theta_b, vtheta_b):
-        outputs_b = apply_fn({'params': params}, r_b, theta_b)
-        vtheta_pred = outputs_b[:, 0:1]
+        r_flat = r.flatten()
+        theta_flat = theta.flatten()
+
+        vr_vec = jax.vmap(v_r_scalar)(r_flat, theta_flat)[:, None]
+        vt_vec = jax.vmap(v_theta_scalar)(r_flat, theta_flat)[:, None]
         
+        vr_r_vec = jax.vmap(grad(v_r_scalar, argnums=0))(r_flat, theta_flat)[:, None]
+        vr_t_vec = jax.vmap(grad(v_r_scalar, argnums=1))(r_flat, theta_flat)[:, None]
+        vt_r_vec = jax.vmap(grad(v_theta_scalar, argnums=0))(r_flat, theta_flat)[:, None]
+        vt_t_vec = jax.vmap(grad(v_theta_scalar, argnums=1))(r_flat, theta_flat)[:, None]
+        p_r_vec = jax.vmap(grad(p_scalar, argnums=0))(r_flat, theta_flat)[:, None]
+        p_t_vec = jax.vmap(grad(p_scalar, argnums=1))(r_flat, theta_flat)[:, None]
+
+        vr_rr_vec = jax.vmap(grad(grad(v_r_scalar, argnums=0), argnums=0))(r_flat, theta_flat)[:, None]
+        vr_tt_vec = jax.vmap(grad(grad(v_r_scalar, argnums=1), argnums=1))(r_flat, theta_flat)[:, None]
+        vt_rr_vec = jax.vmap(grad(grad(v_theta_scalar, argnums=0), argnums=0))(r_flat, theta_flat)[:, None]
+        vt_tt_vec = jax.vmap(grad(grad(v_theta_scalar, argnums=1), argnums=1))(r_flat, theta_flat)[:, None]
+
+        mu = nu * rho
+        r_col = r_flat[:, None] 
+
+        e1 = vr_r_vec + vr_vec / r_col + vt_t_vec / r_col
+
+        term_inertial_r = rho * (vr_vec * vr_r_vec + (vt_vec / r_col) * vr_t_vec - (vt_vec**2 / r_col))
+        term_pressure_r = p_r_vec
+        term_viscous_r = mu * (vr_rr_vec + (1.0 / r_col) * vr_r_vec + (1.0 / r_col**2) * vr_tt_vec - vr_vec / r_col**2 - (2.0 / r_col**2) * vt_t_vec)
+        e2 = term_inertial_r + term_pressure_r - term_viscous_r
+
+        term_inertial_t = rho * (vr_vec * vt_r_vec + (vt_vec / r_col) * vt_t_vec + (vr_vec * vt_vec) / r_col)
+        term_pressure_t = (1.0 / r_col) * p_t_vec
+        term_viscous_t = mu * (vt_rr_vec + (1.0 / r_col) * vt_r_vec + (1.0 / r_col**2) * vt_tt_vec - vt_vec / r_col**2 + (2.0 / r_col**2) * vr_t_vec)
+        e3 = term_inertial_t + term_pressure_t - term_viscous_t
+
+        loss_e1 = jnp.mean(e1**2)
+        loss_e2 = jnp.mean(e2**2)
+        loss_e3 = jnp.mean(e3**2)
+        
+        return loss_e1 + loss_e2 + loss_e3
+
+    def boundary_loss(params, r_b, theta_b, vr_b, vtheta_b):
+        vr_pred, vtheta_pred, _ = model_output(r_b, theta_b)
+        
+        loss_vr = jnp.mean((vr_pred - vr_b)**2)
         loss_vtheta = jnp.mean((vtheta_pred - vtheta_b)**2)
-        return loss_vtheta
+        return loss_vr + loss_vtheta
 
     loss_r = residual_loss(params, rc, thetac)
-    loss_b = boundary_loss(params, rb, thetab, vtheta_b)
+    loss_b = boundary_loss(params, rb, thetab, vr_b, vtheta_b)
     
     total_loss = loss_r + lbda_b * loss_b
     return total_loss
@@ -169,8 +203,7 @@ def get_low_res_solution_jax(is_polar, key):
 
     if is_polar:
         print("--- Polar 저비용 PINN (PDE + BC) 학습 시작 ---")
-        
-        low_cost_features = [16, 16, 1] 
+        low_cost_features = [16, 16, 3] 
         model = PINN2d(features=low_cost_features)
         
         key_b1, key_b2, key_rc, key_tc = jax.random.split(data_key, 4)
@@ -215,8 +248,8 @@ def get_low_res_solution_jax(is_polar, key):
         tt_flat = tt.flatten()[:, None]
         output = model.apply({'params': params}, rr_flat, tt_flat)
         
-        sol1 = jnp.zeros((grid_res, grid_res)) 
-        sol2 = output[:, 0].reshape(grid_res, grid_res) 
+        sol1 = output[:, 0].reshape(grid_res, grid_res) 
+        sol2 = output[:, 1].reshape(grid_res, grid_res) 
         return sol1, sol2, rr, tt 
 
     else:
@@ -448,5 +481,5 @@ ax.grid(False)
 plt.tight_layout()
 plt.savefig("SPINN_Plot_B_Reff.png", dpi=300, bbox_inches='tight')
 
-print(f"  - 예측된 최적 좌표계: {optimal_system}")
-print(f"  - 예측된 권장 랭크: {reff}")
+print(f"   - 예측된 최적 좌표계: {optimal_system}")
+print(f"   - 예측된 권장 랭크: {reff}")
