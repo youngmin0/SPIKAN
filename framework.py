@@ -355,7 +355,6 @@ vx_error = u_low_res - vx_exact
 vy_error = v_low_res - vy_exact
 
 fig_c, axes_c = plt.subplots(2, 3, figsize=(15, 8))
-fig_c.suptitle("Low-Cost PINN Solution (Cartesian - Final Epoch 2000)", fontsize=16)
 
 cmap_jet_nan_c = cm.jet.copy()
 cmap_jet_nan_c.set_bad(color='lightgray')
@@ -392,7 +391,6 @@ vr_error = vr_low_res - vr_exact
 vtheta_error = vtheta_low_res - vtheta_exact
 
 fig_d, axes_d = plt.subplots(2, 3, figsize=(15, 8))
-fig_d.suptitle("Low-Cost PINN Solution (Polar - Final Epoch 2000)", fontsize=16)
 
 v_min_vr, v_max_vr = -0.1, 0.1 
 im1 = axes_d[0, 0].imshow(vr_low_res, cmap=cm.jet, aspect='auto', origin='lower', extent=[R1, R2, 0, 2*jnp.pi], vmin=v_min_vr, vmax=v_max_vr)
